@@ -1,7 +1,14 @@
 from flask import Flask
+from database import Base, engine
+from models import Event
 from routes import register_routes
 
 app = Flask(__name__)
+
+app.json.sort_keys = False
+app.json.ensure_ascii = False
+
+Base.metadata.create_all(engine)
 
 register_routes(app)
 

@@ -1,21 +1,9 @@
 from flask import jsonify, request
+from sqlalchemy import select
+from database import SessionLocal
+from models import Event
+from datetime import datetime
 
-events = [
-    {
-        "id": 1,
-        "title": "Математика",
-        "description": "Подготовиться к контрольной",
-        "start_at": "2026-09-25T10:00:00",
-        "end_at": "2026-09-25T11:30:00"
-     },
-     {
-         "id": 2,
-         "title": "Встреча",
-         "description": "Встреча с друзьями",
-         "start_at": "2026-09-26T18:00:00",
-         "end_at": "2026-09-26T20:00:00"
-     }
-]
 
 def validate_event(data):
     required_fields = [
@@ -31,93 +19,152 @@ def validate_event(data):
 
     return None
 
-def register_routes(app):
 
+def register_routes(app):
     @app.route("/api/hello", methods=["GET"])
     def hello():
         return jsonify({
             "message": "Hello from API!"
         })
 
+
     @app.route("/api/events", methods=["GET"])
     def get_events():
-        return jsonify(events)
+        with SessionLocal() as session:
+            result = session.execute(
+                    select(Event)
+            )
+
+            events = result.scalars().all()
+
+        return jsonify([
+            {
+                "id": event.id,
+                "title": event.title,
+                "description": event.description,
+                "start_at": event.start_at.isoformat(),
+                "end_at": event.end_at.isoformat()
+            }
+            for event in events
+        ])
+
 
     @app.route("/api/events/<int:event_id>", methods=["GET"])
     def get_event(event_id):
-        for event in events:
-            if event["id"] == event_id:
-                return jsonify(event)
-        return jsonify({
-              "error": "Event not found"
-        }), 404
+        with SessionLocal() as session:
+            event = session.get(Event, event_id)
+        
+        if event is None:
+            return jsonify({
+                "error": "Event not found"
+            }), 404
+
+        return jsonify(
+            {
+                "id": event.id,
+                "title": event.title,
+                "description": event.description,
+                "start_at": event.start_at.isoformat(),
+                "end_at": event.end_at.isoformat()
+            }
+        )
+
 
     @app.route("/api/events", methods=["POST"])
     def create_event():
         data = request.get_json()
-        error = validate_event(data)
         
         if not data:
             return jsonify({
                 "error": "JSON body is required"
             }), 400
 
+        error = validate_event(data)
+
         if error:
             return jsonify({
                 "error": error
             }), 400
 
-        new_event = {
-            "id": len(events) + 1,
-            "title": data["title"],
-            "description": data["description"],
-            "start_at": data["start_at"],
-            "end_at": data["end_at"]
-        }
-                
-        events.append(new_event)
+        start_at = datetime.fromisoformat(data["start_at"])
+        end_at = datetime.fromisoformat(data["end_at"])
 
-        return jsonify(new_event), 201
+        new_event = Event(
+            title=data["title"],
+            description=data["description"],
+            start_at=start_at,
+            end_at=end_at
+        )
+        
+        with SessionLocal() as session:
+            session.add(new_event)
+            session.commit()
+
+            return jsonify({
+                "id": new_event.id,
+                "title": new_event.title,
+                "description": new_event.description,
+                "start_at": new_event.start_at.isoformat(),
+                "end_at": new_event.end_at.isoformat()
+            }), 201
+
 
     @app.route("/api/events/<int:event_id>", methods=["PUT"])
     def update_event(event_id):
         data = request.get_json()
-        error = validate_event(data)
 
         if not data:
             return jsonify({
                 "error": "JSON body is required"
             }), 400
 
+        error = validate_event(data)
+
         if error:
             return jsonify({
                 "error": error
             }), 400
 
-        for event in events:
-            if event["id"] == event_id:
-                event["title"] = data["title"]
-                event["description"] = data["description"]
-                event["start_at"] = data["start_at"]
-                event["end_at"] = data["end_at"]
+        start_at = datetime.fromisoformat(data["start_at"])
+        end_at = datetime.fromisoformat(data["end_at"])
+        
+        with SessionLocal() as session:
+            event = session.get(Event, event_id)
 
-                return jsonify(event)
+            if event is None:
+                return jsonify({
+                    "error": "Event not found"
+                }), 404
 
-        return jsonify({
-            "error": "Event not found"
-        }), 404
+            event.title = data["title"]
+            event.description = data["description"]
+            event.start_at = start_at
+            event.end_at = end_at
+
+            session.commit()
+
+            return jsonify({
+                "id": event.id,
+                "title": event.title,
+                "description": event.description,
+                "start_at": event.start_at.isoformat(),
+                "end_at": event.end_at.isoformat()
+            })
+
 
     @app.route("/api/events/<int:event_id>", methods=["DELETE"])
     def delete_event(event_id):
-
-        for event in events:
-            if event["id"] == event_id:
-                events.remove(event)
-
+        with SessionLocal() as session:
+            event = session.get(Event, event_id)
+        
+            if event is None:
                 return jsonify({
-                    "message": "Event deleted"
-                })
+                    "error": "Event not found"
+                }), 404
+            
+            session.delete(event)
+            session.commit()
 
         return jsonify({
-            "error": "Event not found"
-        }), 404
+            "message": "Event deleted"
+        })
