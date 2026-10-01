@@ -7,6 +7,7 @@ app = Flask(__name__)
 
 app.json.sort_keys = False
 app.json.ensure_ascii = False
+app.config["SECRET_KEY"] = "super-secret-key"
 
 Base.metadata.create_all(engine)
 
